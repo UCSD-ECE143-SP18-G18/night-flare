@@ -1,15 +1,29 @@
 """Retrieve images for VIIRS Nighttime overlay
 """
-import urllib
-import imageio
-import json
 import datetime
 import dateutil.parser
+import imageio
+import json
+import os
+import threading
+import urllib
 
 _base_url = "https://gibs-b.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?"
 
-_cache = {}
-_cache_limit = 1000
+_concurrent_download = 20
+_concurrent_semaphore = threading.Semaphore(_concurrent_download)
+
+_mem_cache = {}
+_mem_cache_limit = 1000
+
+_file_cache_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+	"getimage.cache")
+
+try:
+	os.mkdir(_file_cache_path)
+except OSError:
+	if not os.path.isdir(_file_cache_path):
+		raise
 
 def _build_url(tileMatrix, tileCol, tileRow, date):
 	parameters = {
@@ -28,16 +42,34 @@ def _build_url(tileMatrix, tileCol, tileRow, date):
 
 	return _base_url + urllib.urlencode(parameters)
 
-def _get_image(tileMatrix, tileCol, tileRow, date):
-	url = _build_url(
-		tileMatrix=tileMatrix,
-		tileCol=tileCol,
-		tileRow=tileRow,
-		date=date
-	)
+def _mem_cache_dec(func):
+	def f(tileMatrix, tileCol, tileRow, date):
+		key = "%s_%s_%s_%s" % (tileMatrix, tileCol, tileRow, date)
+		try:
+			return _mem_cache[key]
+		except KeyError:
+			while len(_mem_cache) >= _mem_cache_limit:
+				_mem_cache.popitem()
 
-	return imageio.imread(url)
+			image = func(tileMatrix, tileCol, tileRow, date)
+			_mem_cache[key] = image
+			return image
+	return f
 
+def _file_cache_dec(func):
+	def f(tileMatrix, tileCol, tileRow, date):
+		key = "%s_%s_%s_%s" % (tileMatrix, tileCol, tileRow, date)
+		fname = os.path.join(_file_cache_path, "%s.png" % key)
+		try:
+			return imageio.imread(fname)
+		except OSError:
+			image = func(tileMatrix, tileCol, tileRow, date)
+			imageio.imwrite(fname, image)
+			return image
+	return f
+
+@_mem_cache_dec
+@_file_cache_dec
 def get_image(tileMatrix=5, tileCol=6, tileRow=5, date="2017-10-31"):
 	"""Get a matrix for a given date. Result is cached.
 
@@ -50,24 +82,39 @@ def get_image(tileMatrix=5, tileCol=6, tileRow=5, date="2017-10-31"):
 	Returns:
 	    Image: A numpy matrix
 	"""
-	key_dict = {
-		"tileMatrix": tileMatrix,
-		"tileCol": tileCol,
-		"tileRow": tileRow,
-		"date": date
-	}
+	url = _build_url(
+		tileMatrix=tileMatrix,
+		tileCol=tileCol,
+		tileRow=tileRow,
+		date=date
+	)
 
-	key = json.dumps(key_dict)
+	with _concurrent_semaphore:
+		return imageio.imread(url)
 
-	try:
-		return _cache[key]
-	except KeyError:
-		while len(_cache) >= _cache_limit:
-			_cache.popitem()
+class _GetImageThread(threading.Thread):
+	def __init__(self, tileMatrix, tileCol, tileRow, date):
+		super(_GetImageThread, self).__init__()
 
-		image = _get_image(**key_dict)
-		_cache[key] = image
-		return image
+		self.tileMatrix = tileMatrix
+		self.tileCol = tileCol
+		self.tileRow = tileRow
+		self.date = date
+
+		self._result = None
+
+	def run(self):
+		self._result = get_image(
+			tileMatrix=self.tileMatrix,
+			tileCol=self.tileCol,
+			tileRow=self.tileRow,
+			date=self.date
+		)
+
+	@property
+	def result(self):
+		self.join()
+		return self._result
 
 def get_image_date_range(
 		tileMatrix=5,
@@ -106,18 +153,19 @@ def get_image_date_range(
 		raise ValueError("num_days and end_date can not be both None")
 
 
-	ret = []
+	threads = []
 	date = start_date
 	while date <= end_date:
-		ret.append(get_image(
+		thread = _GetImageThread(
 			tileMatrix=tileMatrix,
 			tileCol=tileCol,
 			tileRow=tileRow,
 			date=date.isoformat()
-		))
+		)
+
+		thread.start()
+		threads.append(thread)
 
 		date += datetime.timedelta(days=1)
 
-	return ret
-
-
+	return [thread.result for thread in threads]
