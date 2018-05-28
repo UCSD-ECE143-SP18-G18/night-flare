@@ -7,6 +7,7 @@ import json
 import os
 import threading
 import urllib
+import numpy as np
 
 _base_url = "https://gibs-b.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?"
 
@@ -25,7 +26,7 @@ except OSError:
 	if not os.path.isdir(_file_cache_path):
 		raise
 
-def _build_url(tileMatrix, tileCol, tileRow, date):
+def _build_url(tileMatrix, tileCol, tileRow, **kwargs):
 	parameters = {
 		"layer": "VIIRS_SNPP_DayNightBand_ENCC",
 		"style": "default",
@@ -34,43 +35,48 @@ def _build_url(tileMatrix, tileCol, tileRow, date):
 		"Request": "GetTile",
 		"Version": "1.0.0",
 		"Format": "image/png",
-		"TIME": date,
 		"TileMatrix": tileMatrix,
 		"TileCol": tileCol,
 		"TileRow": tileRow
 	}
 
+	parameters.update(kwargs)
+
 	return _base_url + urllib.urlencode(parameters)
 
-def _mem_cache_dec(func):
-	def f(tileMatrix, tileCol, tileRow, date):
-		key = "%s_%s_%s_%s" % (tileMatrix, tileCol, tileRow, date)
-		try:
-			return _mem_cache[key]
-		except KeyError:
-			while len(_mem_cache) >= _mem_cache_limit:
-				_mem_cache.popitem()
+def _mem_cache_dec(layer_name):
+	def _real_mem_cache_dec(func):
+		def f(tileMatrix, tileCol, tileRow, date=None):
+			key = "%s_%s_%s_%s_%s" % (layer_name, tileMatrix, tileCol, tileRow, date)
+			try:
+				return _mem_cache[key]
+			except KeyError:
+				while len(_mem_cache) >= _mem_cache_limit:
+					_mem_cache.popitem()
 
-			image = func(tileMatrix, tileCol, tileRow, date)
-			_mem_cache[key] = image
-			return image
-	return f
+				image = func(tileMatrix, tileCol, tileRow, date)
+				_mem_cache[key] = image
+				return image
+		return f
+	return _real_mem_cache_dec
 
-def _file_cache_dec(func):
-	def f(tileMatrix, tileCol, tileRow, date):
-		key = "%s_%s_%s_%s" % (tileMatrix, tileCol, tileRow, date)
-		fname = os.path.join(_file_cache_path, "%s.png" % key)
-		try:
-			return imageio.imread(fname)
-		except OSError:
-			image = func(tileMatrix, tileCol, tileRow, date)
-			imageio.imwrite(fname, image)
-			return image
-	return f
+def _file_cache_dec(layer_name):
+	def _real_file_cache_dec(func):
+		def f(tileMatrix, tileCol, tileRow, date=None):
+			key = "%s_%s_%s_%s_%s" % (layer_name, tileMatrix, tileCol, tileRow, date)
+			fname = os.path.join(_file_cache_path, "%s.png" % key)
+			try:
+				return imageio.imread(fname)
+			except (OSError, IOError):
+				image = func(tileMatrix, tileCol, tileRow, date)
+				imageio.imwrite(fname, image)
+				return image
+		return f
+	return _real_file_cache_dec
 
-@_mem_cache_dec
-@_file_cache_dec
-def get_image(tileMatrix=5, tileCol=6, tileRow=5, date="2017-10-31"):
+@_mem_cache_dec("VIIRS_SNPP_DayNightBand_ENCC")
+@_file_cache_dec("VIIRS_SNPP_DayNightBand_ENCC")
+def _get_image(tileMatrix, tileCol, tileRow, date):
 	"""Get a matrix for a given date. Result is cached.
 
 	Args:
@@ -92,24 +98,94 @@ def get_image(tileMatrix=5, tileCol=6, tileRow=5, date="2017-10-31"):
 	with _concurrent_semaphore:
 		return imageio.imread(url)
 
+def get_image(tileMatrix=5, tileCol=6, tileRow=5, date="2017-10-31", sea="smooth"):
+	"""Get a matrix for a tile. Data for sea area can be masked out.
+
+	If sea is set to "smooth", a numpy.array is returned. Pixels for sea area
+	set to 0. Coast lines are properly anti-aliased.
+
+	If sea is set to "masked", a numpy.ma.array is returned with pixels of sea
+	area masked.
+
+	If sea is set to anything else, the original data is returned.
+
+	Args:
+	    tileMatrix (int, optional): Zoom in level
+	    tileCol (int, optional): Column
+	    tileRow (int, optional): Row
+	    date (str, optional): Date string in iso format
+	    sea (str, optional): Specify how sea pixels are handled. See above.
+
+	Returns:
+	    TYPE: Description
+	"""
+	image = _get_image(
+		tileMatrix=tileMatrix,
+		tileCol=tileCol,
+		tileRow=tileRow,
+		date=date
+	)
+
+	if sea in ["smooth", "masked"]:
+		land_mask = get_mask(
+			tileMatrix=tileMatrix,
+			tileCol=tileCol,
+			tileRow=tileRow
+		)
+
+	if sea == "smooth":
+		return np.multiply(image.astype(np.float), land_mask) / 255.0
+	elif sea == "masked":
+		sea_mask = np.invert(land_mask)
+		return np.ma.masked_where(land_mask < 128, image)
+	else:
+		return image
+
+@_mem_cache_dec("OSM_Land_Mask")
+@_file_cache_dec("OSM_Land_Mask")
+def _get_mask(tileMatrix=5, tileCol=6, tileRow=5, date=None):
+	url = _build_url(
+		tileMatrix=tileMatrix,
+		tileCol=tileCol,
+		tileRow=tileRow,
+
+		layer="OSM_Land_Mask",
+		tilematrixset="250m"
+	)
+
+	with _concurrent_semaphore:
+		return imageio.imread(url)
+
+def get_mask(tileMatrix=5, tileCol=6, tileRow=5):
+	"""Get land mask for a tile
+
+	Args:
+	    tileMatrix (int, optional): Description
+	    tileCol (int, optional): Description
+	    tileRow (int, optional): Description
+
+	Returns:
+	    np.array: 512x512 uint8 array. 255 means land, 0 means sea. Coast line
+	              is anti-aliased, so it can be anything between 1~254
+	"""
+	image_mask = _get_mask(
+		tileMatrix=tileMatrix,
+		tileCol=tileCol,
+		tileRow=tileRow
+	)
+
+	array_mask = image_mask.take(-1, axis=2)
+	return array_mask
+
 class _GetImageThread(threading.Thread):
-	def __init__(self, tileMatrix, tileCol, tileRow, date):
+	def __init__(self, **kwargs):
 		super(_GetImageThread, self).__init__()
 
-		self.tileMatrix = tileMatrix
-		self.tileCol = tileCol
-		self.tileRow = tileRow
-		self.date = date
-
+		self.kwargs = kwargs
 		self._result = None
 
 	def run(self):
-		self._result = get_image(
-			tileMatrix=self.tileMatrix,
-			tileCol=self.tileCol,
-			tileRow=self.tileRow,
-			date=self.date
-		)
+		self._result = get_image(**self.kwargs)
 
 	@property
 	def result(self):
@@ -117,24 +193,20 @@ class _GetImageThread(threading.Thread):
 		return self._result
 
 def get_image_date_range(
-		tileMatrix=5,
-		tileCol=6,
-		tileRow=5,
 		start_date="2017-10-01",
 		num_days=None,
-		end_date="2017-10-10"):
+		end_date="2017-10-10",
+		**kwargs):
 	"""Get a list of matrixes for a date range.
 
 	At least one of num_days and end_date should be set. If both are set,
 	num_days takes precedence over end_date.
 
 	Args:
-	    tileMatrix (int, optional): Zoom in level
-	    tileCol (int, optional): Column
-	    tileRow (int, optional): Row
 	    start_date (str, optional): start date
 	    num_days (int, optional): number of days
 	    end_date (str, optional): end date
+	    **kwargs: Extra parameters passed to get_image
 
 	Returns:
 	    list: list of image matrixes
@@ -156,12 +228,7 @@ def get_image_date_range(
 	threads = []
 	date = start_date
 	while date <= end_date:
-		thread = _GetImageThread(
-			tileMatrix=tileMatrix,
-			tileCol=tileCol,
-			tileRow=tileRow,
-			date=date.isoformat()
-		)
+		thread = _GetImageThread(date=date.isoformat(), **kwargs)
 
 		thread.start()
 		threads.append(thread)
