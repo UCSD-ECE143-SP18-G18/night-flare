@@ -40,6 +40,10 @@ def _build_url(tileMatrix, tileCol, tileRow, **kwargs):
 		"TileRow": tileRow
 	}
 
+	if "date" in kwargs:
+		parameters["TIME"] = kwargs["date"]
+		del kwargs["date"]
+
 	parameters.update(kwargs)
 
 	return _base_url + urllib.urlencode(parameters)
