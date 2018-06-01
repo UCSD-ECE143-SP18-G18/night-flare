@@ -19,6 +19,7 @@ _mem_cache_limit = 1000
 
 _file_cache_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
 	"getimage.cache")
+_file_cache_lock = threading.Lock()
 
 try:
 	os.mkdir(_file_cache_path)
@@ -70,10 +71,12 @@ def _file_cache_dec(layer_name):
 			key = "%s_%s_%s_%s_%s" % (layer_name, tileMatrix, tileCol, tileRow, date)
 			fname = os.path.join(_file_cache_path, "%s.png" % key)
 			try:
-				return imageio.imread(fname)
+				with _file_cache_lock:
+					return imageio.imread(fname)
 			except (OSError, IOError):
 				image = func(tileMatrix, tileCol, tileRow, date)
-				imageio.imwrite(fname, image)
+				with _file_cache_lock:
+					imageio.imwrite(fname, image)
 				return image
 		return f
 	return _real_file_cache_dec
@@ -98,6 +101,8 @@ def _get_image(tileMatrix, tileCol, tileRow, date):
 		tileRow=tileRow,
 		date=date
 	)
+
+	print url
 
 	with _concurrent_semaphore:
 		return imageio.imread(url)
