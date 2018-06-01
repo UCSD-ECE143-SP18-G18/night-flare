@@ -6,10 +6,20 @@ from scipy import signal
 import getimage
 
 def get_processed_image(start_date="2017-10-01", num_days=31, end_date=None,**kwargs):
+    '''
+    Intake a date range of photo records and then generate the enhanced resulted single image
+    param: start date                             type:string
+    param: num_days                               type:int
+    param: end_date                               type:string
+    
+    output: np.array 
+    
+    '''
+    
     
     l = getimage.get_image_date_range(start_date, num_days, end_date, **kwargs)
 
-    #plt.axis('off')
+
 
     w,h=l[0].shape
     arr=zeros((h,w),float)
@@ -24,12 +34,11 @@ def get_processed_image(start_date="2017-10-01", num_days=31, end_date=None,**kw
 
     avg=60
 
-    for i in range(out.shape[1]):
-        for j in range(out.shape[0]):
-            if out[i][j]<=1.7*avg and out[i][j]>=0.9*avg:
-                out[i][j]*=0.5
 
+    out[out<=1.7*avg and out>=0.9*avg]=out*0.5
+    
+    
+    
     filtered = signal.wiener(out,5)
-    #fig=plt.figure(figsize=(10,10))
-    #plt.imshow(filtered)
+   
     return filtered
