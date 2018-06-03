@@ -38,14 +38,19 @@ def get_processed_image(start_date="2017-10-01", num_days=31, end_date=None,**kw
     return filtered
 
 def get_california_image(tileMatrix=6, tileCol=12, tileRow=10, start_date="2017-10-01", num_days=31):
-    '''
+    """
+    To obtain the full california region map and mask map.
     
-    
-    
-    '''
-    
-    
-    
+    Args:
+        tileMatrix (int, optional): Zoom in level
+        tileCol (int, optional): Column
+        tileRow (int, optional): Row
+        start_date (str, optional): Date string in iso format
+        numdays (int, optional): The toal number of days for get_processed_image() function.
+    Returns:
+        output_im (np.ndarray): The Region map.
+        output_mask (np.ndarray): The mask for the region map generated (land = 1, ocean = 0).
+    """ 
     im = []
     mask = []
     for i in range(3):
