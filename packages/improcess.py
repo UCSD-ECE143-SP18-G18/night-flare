@@ -29,11 +29,23 @@ def get_processed_image(start_date="2017-10-01", num_days=31, end_date=None,**kw
     out *= 255.0/out.max()    
     out = signal.wiener(out,5)
     avg=60
-    out[out<=1.7*avg and out>=0.9*avg]=out*0.5
+
+    for i in range(out.shape[1]):
+            for j in range(out.shape[0]):
+                if out[i][j]<=1.7*avg and out[i][j]>=0.9*avg:
+                    out[i][j]*=0.5
     filtered = signal.wiener(out,5)
     return filtered
 
 def get_california_image(tileMatrix=6, tileCol=12, tileRow=10, start_date="2017-10-01", num_days=31):
+    '''
+    
+    
+    
+    '''
+    
+    
+    
     im = []
     mask = []
     for i in range(3):
