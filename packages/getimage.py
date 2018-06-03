@@ -102,8 +102,6 @@ def _get_image(tileMatrix, tileCol, tileRow, date):
 		date=date
 	)
 
-	print url
-
 	with _concurrent_semaphore:
 		return imageio.imread(url)
 
