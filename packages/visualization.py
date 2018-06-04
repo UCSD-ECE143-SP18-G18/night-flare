@@ -149,4 +149,90 @@ class StaticPlot:
         self.render()
 
 class AnimatedPlot:
-    pass
+    def __init__(
+            self,
+            tileMatrix=4,
+            tileCol=3,
+            tileRow=2,
+            start_date = '2017-10-01', 
+            end_date = '2017-10-10'):
+
+        self.start_date = start_date
+        self.end_date = end_date
+
+        self.fig = None
+        self.ax = None
+        self.ax_im = None
+
+        self.tileMatrix = tileMatrix
+        self.tileCol = tileCol
+        self.tileRow =  tileRow
+
+        #Downloading Images
+        img_array = getimage.get_image_date_range(
+            tileMatrix = self.tileMatrix,
+            tileCol = self.tileCol,
+            tileRow = self.tileRow,
+            start_date = self.start_date,
+            end_date = self.end_date
+        )
+        #Make an array of image
+        self.img = [Image.fromarray(i) for i in img_array]
+
+    def subplot(self):
+        self.fig, self.ax = plt.subplots()
+        self.create_imshow()
+        ani = self.create_animate()
+        return ani
+
+    def create_imshow(self):
+        extent = (
+            self.top_left[1],
+            self.bot_right[1],
+            self.top_left[0],
+            self.bot_right[0]
+        )
+
+        self.ax_im = self.ax.imshow(np.zeros((512, 512)), extent=extent)
+
+    @property
+    def dates(self):
+        # Make an array of date string
+        dates = []
+        start_date = datetime.datetime.strptime(self.start_date,'%Y-%m-%d')
+        end_date = datetime.datetime.strptime(self.end_date,'%Y-%m-%d')
+        step = datetime.timedelta(days=1)
+        while start_date<=end_date:
+            dates.append(str(start_date.date()))
+            start_date += step
+        return dates
+
+    @property
+    def bot_right(self):
+        return conversion.get_coordinates(
+            tileMatrix = self.tileMatrix,
+            tileCol = self.tileCol + 1,
+            tileRow = self.tileRow + 1
+        )
+
+    @property
+    def top_left(self):
+        return conversion.get_coordinates(
+            tileMatrix = self.tileMatrix,
+            tileCol = self.tileCol,
+            tileRow = self.tileRow
+        )
+
+    def create_animate(self):
+        # create animate function
+        def update_fig(frame):
+            #updating images on every frame
+            self.ax_im.set_data(self.img[frame])
+            self.ax.set_title(self.dates[frame])
+            return [self.ax_im]
+
+        return animation.FuncAnimation(
+            self.fig, 
+            update_fig, 
+            frames = range(len(self.img)), 
+            interval = 600)
