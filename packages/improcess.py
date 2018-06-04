@@ -8,15 +8,15 @@ import conversion
 import numpy as np
 
 
-def get_processed_image(start_date="2017-10-01", num_days=31, end_date=None,**kwargs):
+def get_processed_image_clip(start_date="2017-10-01", num_days=31, end_date=None,**kwargs):
     '''
     Intake a date range of photo records and then generate the enhanced resulted single image
     param: start date                             type:string
     param: num_days                               type:int
     param: end_date                               type:string
-    
-    output: np.array 
-    
+
+    output: np.array
+
     '''
     l = getimage.get_image_date_range(start_date, num_days, end_date, **kwargs)
     w,h=l[0].shape
@@ -26,31 +26,56 @@ def get_processed_image(start_date="2017-10-01", num_days=31, end_date=None,**kw
         imarr=array(im,dtype=float)
         arr=arr+imarr/N
     out = matrix.round(arr)
-    out *= 255.0/out.max()    
+    out *= 255.0/out.max()
     out = signal.wiener(out,5)
     avg=60
 
-    for i in range(out.shape[1]):
-            for j in range(out.shape[0]):
-                if out[i][j]<=1.7*avg and out[i][j]>=0.9*avg:
-                    out[i][j]*=0.5
+    out[(out >= 0.9*avg) & (out <= 1.7*avg)] *= 0.5
+
+    filtered = signal.wiener(out,5)
+    return filtered
+
+def get_processed_image_band_reject(start_date="2017-10-01", num_days=31, end_date=None,**kwargs):
+    '''
+    Intake a date range of photo records and then generate the enhanced resulted single image
+    param: start date                             type:string
+    param: num_days                               type:int
+    param: end_date                               type:string
+
+    output: np.array
+
+    '''
+    l = getimage.get_image_date_range(start_date, num_days, end_date, **kwargs)
+    w,h=l[0].shape
+    arr=zeros((h,w),float)
+    N=len(l)
+    for im in l:
+        imarr=array(im,dtype=float)
+        arr=arr+imarr/N
+    out = matrix.round(arr)
+    out *= 255.0/out.max()
+    out = signal.wiener(out,5)
+
+    avg=60.0
+    bandwidth = 40
+    reject_ratio = 0.4
+
+    myFunc = np.vectorize(lambda x:
+        x * (((avg**2 - x**2)**2/((2*bandwidth)**2 * x**2 + (avg**2 - x**2)**2))**0.5*reject_ratio + (1 - reject_ratio)))
+    out = myFunc(out)
+
     filtered = signal.wiener(out,5)
     return filtered
 
 def get_california_image(tileMatrix=6, tileCol=12, tileRow=10, start_date="2017-10-01", num_days=31):
-    """
-    To obtain the full california region map and mask map.
-    
-    Args:
-        tileMatrix (int, optional): Zoom in level
-        tileCol (int, optional): Column
-        tileRow (int, optional): Row
-        start_date (str, optional): Date string in iso format
-        numdays (int, optional): The toal number of days for get_processed_image() function.
-    Returns:
-        output_im (np.ndarray): The Region map.
-        output_mask (np.ndarray): The mask for the region map generated (land = 1, ocean = 0).
-    """ 
+    '''
+
+
+
+    '''
+
+
+
     im = []
     mask = []
     for i in range(3):
