@@ -67,21 +67,23 @@ def get_processed_image_band_reject(start_date="2017-10-01", num_days=31, end_da
     filtered = signal.wiener(out,5)
     return filtered
 
-def get_california_image(tileMatrix=6, tileCol=12, tileRow=10, start_date="2017-10-01", num_days=31):
+def get_california_image(tileMatrix=6, tileCol=12, tileRow=10, start_date="2017-10-01", num_days=31, improcess_select=None):
     '''
 
 
 
     '''
-
-
-
     im = []
     mask = []
     for i in range(3):
-        im1 = get_processed_image(tileMatrix=tileMatrix, tileCol=tileCol, tileRow=tileRow+i, start_date=start_date)
-        im2 = get_processed_image(tileMatrix=tileMatrix, tileCol=tileCol+1, tileRow=tileRow+i, start_date=start_date)
-        im3 = get_processed_image(tileMatrix=tileMatrix, tileCol=tileCol+2, tileRow=tileRow+i, start_date=start_date)
+        if improcess_select == 'band_reject':
+            im1 = get_processed_image_band_reject(tileMatrix=tileMatrix, tileCol=tileCol, tileRow=tileRow+i, start_date=start_date)
+            im2 = get_processed_image_band_reject(tileMatrix=tileMatrix, tileCol=tileCol+1, tileRow=tileRow+i, start_date=start_date)
+            im3 = get_processed_image_band_reject(tileMatrix=tileMatrix, tileCol=tileCol+2, tileRow=tileRow+i, start_date=start_date)
+        else:
+            im1 = get_processed_image_clip(tileMatrix=tileMatrix, tileCol=tileCol, tileRow=tileRow+i, start_date=start_date)
+            im2 = get_processed_image_clip(tileMatrix=tileMatrix, tileCol=tileCol+1, tileRow=tileRow+i, start_date=start_date)
+            im3 = get_processed_image_clip(tileMatrix=tileMatrix, tileCol=tileCol+2, tileRow=tileRow+i, start_date=start_date)
         im.append(np.concatenate((im1, im2, im3), axis=1))
         mask1 = getimage.get_mask(tileMatrix=tileMatrix, tileCol=tileCol, tileRow=tileRow+i)
         mask2 = getimage.get_mask(tileMatrix=tileMatrix, tileCol=tileCol+1, tileRow=tileRow+i)
