@@ -10,6 +10,8 @@ import getimage
 import conversion
 import matplotlib.animation as animation
 import datetime
+import collections
+import improcess
 
 class StaticPlot:
 
@@ -116,12 +118,10 @@ class StaticPlot:
     def render(self):
         """Rendering(Changing) image on the plot
         """
-        img_array = getimage.get_image(
+        img_array = improcess.get_processed_image_band_reject(
             tileMatrix = self.tileMatrix,
             tileCol = self.tileCol,
-            tileRow = self.tileRow,
-            date = self.date
-        )
+            tileRow = self.tileRow)
 
         img = Image.fromarray(img_array)
         self.ax_im.set_data(img)
@@ -243,8 +243,8 @@ class AnimatedPlot:
             tileMatrix=4,
             tileCol=3,
             tileRow=2,
-            start_date = '2017-10-01', 
-            end_date = '2017-10-10'):
+            start_date = '2017-01-01', 
+            end_date = '2018-01-01'):
         """Initialize the starting tile
         
         Args:
@@ -274,8 +274,8 @@ class AnimatedPlot:
             plt.Animation: Function that has Animation
         """
         self.fig, self.ax = plt.subplots()
-        self.load_image()
         self.get_dates()
+        self.load_image()
         self.create_imshow()
         return self.create_animate()
 
@@ -283,13 +283,8 @@ class AnimatedPlot:
         """Make all images to a list
         """
         #Downloading Images
-        img_array = getimage.get_image_date_range(
-            tileMatrix = self.tileMatrix,
-            tileCol = self.tileCol,
-            tileRow = self.tileRow,
-            start_date = self.start_date,
-            end_date = self.end_date
-        )
+        img_array = [improcess.get_processed_image_band_reject(
+            start_date = i) for i in self.dates]
         #Make an array of image
         self.img = [Image.fromarray(i) for i in img_array]
 
@@ -310,10 +305,10 @@ class AnimatedPlot:
         """
         start_date = datetime.datetime.strptime(self.start_date,'%Y-%m-%d')
         end_date = datetime.datetime.strptime(self.end_date,'%Y-%m-%d')
-        step = datetime.timedelta(days=1)
-        while start_date<=end_date:
-            self.dates.append(str(start_date.date()))
-            start_date += step
+        self.dates = collections.OrderedDict(
+            ((start_date + datetime.timedelta(_)).strftime("%Y-%m-%d"),None)
+            for _ in xrange((end_date - start_date).days)
+            if (start_date+datetime.timedelta(_)).day == start_date.day).keys()
 
     @property
     def bot_right(self):
