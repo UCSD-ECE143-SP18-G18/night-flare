@@ -68,11 +68,20 @@ def get_processed_image_band_reject(start_date="2017-10-01", num_days=31, end_da
     return filtered
 
 def get_california_image(tileMatrix=6, tileCol=12, tileRow=10, start_date="2017-10-01", num_days=31, improcess_select=None):
-    '''
-
-
-
-    '''
+    """
+    To obtain the whole california light pollution map and the mask for the land for given start date.
+    
+    Args:
+        tileMatrix (int, optional): Zoom in level
+        tileCol (int, optional): Column
+        tileRow (int, optional): Row
+        start_date (str, optional): The starting date.
+        num_days (int, optional): The number of days used for image processing.
+        improcess_select (str, optional): To select from the clip and band reject image processing method('band_reject').
+    Returns:
+        im (np.ndarray): The processed california light pollution map.
+        mask (np.ndarray): The mask for the land (ocean = 0, land = 1).
+    """
     im = []
     mask = []
     for i in range(3):
